@@ -1,0 +1,43 @@
+# Publishes the static stock price feed the MySchmeckles app reads.
+name: Daily stock prices
+
+on:
+  schedule:
+    # 23:00 UTC daily — comfortably after the US market close in both EST and
+    # EDT. Weekend runs are harmless: prices don't move, so nothing is committed.
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prices
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Exits non-zero without writing if too much of the universe failed, so a
+      # bad upstream day leaves the previous good feed in place.
+      - name: Build price feed
+        run: node build.mjs
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- stocks.json; then
+            echo "No price changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add stocks.json
+          git commit -m "chore: daily stock prices"
+          git push
